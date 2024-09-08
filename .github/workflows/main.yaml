@@ -1,48 +1,65 @@
-name: Spring Boot Project CI/CD pipeline
+name: CI/CD Pipeline for Spring Boot Project
 
 on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
-  build:
-    name: Build and Deploy spring boot app
+  rouvsen-job:
+    name: Build, Test, and Deploy Spring Boot App
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest ]
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v4
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4.2.2
+      - name: Get short commit SHA
+        id: get_short_sha
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
-          distribution: 'corretto'
+          distribution: 'adopt'
           java-version: 17
+          cache: 'maven'
 
-      - name: Cache Local Maven Repository
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{runner.os}}-maven-${{hashFiles('**/pom.xml')}}
-          restore-keys: |
-            ${{runner.os}}-maven-
-
-
-      - name: Build app
+      - name: Build App (Skip Tests)
         run: |
-          mvn clean
-          mvn -B package --file pom.xml
+          mvn clean install -DskipTests
+        env:
+          CI: true
+
+      - name: Run Unit and Integration Tests
+        run: |
+          mvn test
+          mvn verify
 
       - name: Login to Docker Hub
+        if: github.ref == 'refs/heads/master'
         uses: docker/login-action@v2
         with:
-          username: ${{secrets.DOCKER_HUB_USER_NAME}}
-          password: ${{secrets.DOCKER_HUB_PASSWORD}}
+          username: ${{ secrets.DOCKER_HUB_USER_NAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-      - name: Build and Push
+      - name: Build and Push Docker Image
+        if: github.ref == 'refs/heads/master'
         uses: docker/build-push-action@v4
         with:
           context: .
           dockerfile: Dockerfile
           push: true
-          tags: ${{secrets.DOCKER_HUB_USER_NAME}}/actions-app:0.1.0
+          tags: ${{ secrets.DOCKER_HUB_USER_NAME }}/actions-app:${{ env.SHORT_SHA }}
+
+      - name: Notify Deployment Status
+        if: failure()
+        run: echo "Build failed, please check the logs!"
