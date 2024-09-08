@@ -17,6 +17,6 @@ public class ActionController {
 
     @GetMapping("/test-caching")
     public ResponseEntity<String> testCaching(@RequestHeader String header) {
-        return ResponseEntity.ok("Hi, %s".formatted(header));
+        return ResponseEntity.ok("Hi, %s.".formatted(header));
     }
 }
